@@ -35,7 +35,10 @@
                             placeholder="Enter tweet" 
                             class="w-full border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none h-40 p-2"
                         ></textarea>
-                        <button class="absolute top-2 right-2 bg-gray-200 hover:bg-gray-300 rounded-full p-2 transition duration-300">
+                        <button 
+                            @click="optimizeTweet"
+                            class="absolute top-2 right-2 bg-gray-200 hover:bg-gray-300 rounded-full p-2 transition duration-300"
+                        >
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                             </svg>
@@ -65,7 +68,7 @@
             <div class="w-full max-w-2xl p-6 bg-white rounded-lg shadow-md">
                 <h2 class="text-2xl font-bold mb-4 text-gray-800">Scheduled Tweets</h2>
                 <ul class="space-y-4">
-                    <template x-for="tweet in sortedTweets" :key="tweet.id">
+                    <template x-for="tweet in tweets" :key="tweet.id">
                         <li class="border-b pb-4">
                             <p class="mb-2" x-text="tweet.content"></p>
                             <div class="flex justify-between items-center">
@@ -101,19 +104,21 @@
                            this.newTweet.publishDate !== '' && 
                            this.newTweet.publishTime !== '';
                 },
-                get sortedTweets() {
-                    return [...this.tweets].sort((a, b) => {
-                        const dateA = new Date(`${a.publishDate} ${a.publishTime}`);
-                        const dateB = new Date(`${b.publishDate} ${b.publishTime}`);
-                        return dateB - dateA;
-                    });
-                },
-                scheduleTweet() {
+                async scheduleTweet() {
                     if (this.isFormValid && this.charCount <= this.charLimit) {
-                        this.tweets.push({
-                            id: Date.now(),
-                            ...this.newTweet
+                        const publishTime = new Date(`${this.newTweet.publishDate}T${this.newTweet.publishTime}`).toISOString();
+                        const response = await fetch('/api/tweets', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                content: this.newTweet.content,
+                                publish_time: publishTime,
+                            }),
                         });
+                        const newTweet = await response.json();
+                        this.tweets.push(newTweet);
                         this.newTweet = {
                             content: '',
                             publishDate: '',
@@ -122,15 +127,46 @@
                         this.charCount = 0;
                     }
                 },
-                publishNow(id) {
-                    // Implement publish now functionality
-                    console.log('Publish now:', id);
+                async publishNow(id) {
+                    const response = await fetch(`/api/tweets/${id}/publish`, {
+                        method: 'PUT',
+                    });
+                    const updatedTweet = await response.json();
+                    const index = this.tweets.findIndex(t => t.id === id);
+                    if (index !== -1) {
+                        this.tweets[index] = updatedTweet;
+                    }
                 },
-                deleteTweet(id) {
+                async deleteTweet(id) {
+                    await fetch(`/api/tweets/${id}`, {
+                        method: 'DELETE',
+                    });
                     this.tweets = this.tweets.filter(tweet => tweet.id !== id);
+                },
+                async fetchTweets() {
+                    const response = await fetch('/api/tweets');
+                    this.tweets = await response.json();
+                },
+                init() {
+                    this.fetchTweets();
+                },
+                async optimizeTweet() {
+                    const response = await fetch('/api/optimize', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            text: this.newTweet.content
+                        }),
+                    });
+                    const result = await response.json();
+                    this.newTweet.content = result.optimized_text;
+                    this.updateCharCount();
                 }
             }
         }
     </script>
+
 </body>
 </html>
